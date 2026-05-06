@@ -95,11 +95,11 @@ async def upload_prescription(
     content = await file.read()
     compressed_content = compress_image(content)
 
-    # 2. Upload to Supabase
+    # 2. Upload to Cloudinary
     url = await storage_service.upload_file(
-        bucket="prescriptions",
-        file_data=compressed_content,
-        filename=f"{consultation_id}_prescription.webp"
+        file_content=compressed_content,
+        filename=f"{consultation_id}_prescription.webp",
+        folder="prescriptions"
     )
 
     if not url:
@@ -128,11 +128,11 @@ async def upload_report(
     content = await file.read()
     compressed_content = compress_image(content)
 
-    # 2. Upload to Supabase
+    # 2. Upload to Cloudinary
     url = await storage_service.upload_file(
-        bucket="reports",
-        file_data=compressed_content,
-        filename=f"{consultation_id}_report_{uuid.uuid4().hex[:8]}.webp"
+        file_content=compressed_content,
+        filename=f"{consultation_id}_report_{uuid.uuid4().hex[:8]}.webp",
+        folder="reports"
     )
 
     if not url:

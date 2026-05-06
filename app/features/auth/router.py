@@ -5,7 +5,7 @@ from datetime import datetime
 
 from app.core.database import get_db
 from app.core.security import hash_password, verify_password, create_access_token
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, require_role
 from app.features.auth.models import User, Clinic, UserRole
 from app.features.auth.schemas import (
     ClinicCreate, ClinicResponse,
@@ -124,4 +124,18 @@ async def get_current_user_info(
 ):
     """Get the current logged-in user's info. Requires Bearer token."""
     return current_user
+
+
+@router.get("/staff", response_model=list[UserResponse])
+async def get_clinic_staff(
+    clinic_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("doctor")),
+):
+    """Get all receptionist staff for a clinic. Doctor only."""
+    staff = db.query(User).filter(
+        User.clinic_id == clinic_id,
+        User.role == UserRole.RECEPTIONIST,
+    ).all()
+    return staff
 

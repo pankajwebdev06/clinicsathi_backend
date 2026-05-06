@@ -1,0 +1,26 @@
+  - type: web
+    name: clinicsathi-backend
+    env: python
+    region: singapore
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app.main:app -w 2 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT
+    envVars:
+      - key: DATABASE_URL
+        sync: false          # Set manually in Render dashboard → your Supabase PostgreSQL URL
+      - key: SECRET_KEY
+        generateValue: true  # Render auto-generates a secure random value
+      - key: ALLOWED_ORIGINS
+        sync: false          # e.g. https://your-app.vercel.app
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false          # Set manually in Render dashboard
+      - key: CLOUDINARY_API_KEY
+        sync: false          # Set manually in Render dashboard
+      - key: CLOUDINARY_API_SECRET
+        sync: false          # Set manually in Render dashboard
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "11520"       # 8 days
