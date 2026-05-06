@@ -27,12 +27,6 @@ app.add_middleware(
 )
 
 
-# ── Root route ───────────────────────────────────────────────────────────────
-@app.get("/")
-async def root():
-    return {"message": "Welcome to ClinicSathi API", "docs": "/api/docs", "status": "active"}
-
-
 # ── Health check ─────────────────────────────────────────────────────────────
 @app.get("/health")
 async def health_check():
