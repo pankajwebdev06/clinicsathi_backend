@@ -33,11 +33,13 @@ async def create_tables():
 # ── CORS ────────────────────────────────────────────────────────────────────
 # In production set ALLOWED_ORIGINS env var to your Vercel domain(s)
 # e.g. "https://clinicsathi.vercel.app,https://www.clinicsathi.in"
-origins = (
-    [o.strip() for o in settings.ALLOWED_ORIGINS.split(",")]
-    if settings.ALLOWED_ORIGINS != "*"
-    else ["*"]
-)
+# Default includes the deployed Vercel domain for immediate functionality
+DEFAULT_ORIGINS = "https://clinicsathi-frontend.vercel.app,https://clinic-sathi.vercel.app,http://localhost:3000,http://127.0.0.1:3000"
+
+cors_origins_str = settings.ALLOWED_ORIGINS if settings.ALLOWED_ORIGINS and settings.ALLOWED_ORIGINS != "*" else DEFAULT_ORIGINS
+origins = [o.strip() for o in cors_origins_str.split(",") if o.strip()]
+
+print(f"🔒 CORS allowed origins: {origins}")
 
 app.add_middleware(
     CORSMiddleware,
@@ -45,6 +47,8 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=600,
 )
 
 
