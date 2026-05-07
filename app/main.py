@@ -20,6 +20,26 @@ app = FastAPI(
 )
 
 
+# ── CORS (MUST BE FIRST) ───────────────────────────────────────────────────
+# In production set ALLOWED_ORIGINS env var to your Vercel domain(s)
+DEFAULT_ORIGINS = "https://clinicsathi-frontend.vercel.app,https://clinic-sathi.vercel.app,http://localhost:3000,http://127.0.0.1:3000"
+
+cors_origins_str = settings.ALLOWED_ORIGINS if settings.ALLOWED_ORIGINS and settings.ALLOWED_ORIGINS != "*" else DEFAULT_ORIGINS
+origins = [o.strip() for o in cors_origins_str.split(",") if o.strip()]
+
+print(f"🔒 CORS allowed origins: {origins}")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=86400,
+)
+
+
 # ── Database Table Creation ─────────────────────────────────────────────────
 def _setup_database():
     """Synchronous database setup function to run in thread."""
@@ -48,30 +68,13 @@ async def create_tables():
     asyncio.create_task(asyncio.to_thread(_setup_database))
 
 
-# ── CORS ────────────────────────────────────────────────────────────────────
-# In production set ALLOWED_ORIGINS env var to your Vercel domain(s)
-# e.g. "https://clinicsathi.vercel.app,https://www.clinicsathi.in"
-# Default includes the deployed Vercel domain for immediate functionality
-DEFAULT_ORIGINS = "https://clinicsathi-frontend.vercel.app,https://clinic-sathi.vercel.app,http://localhost:3000,http://127.0.0.1:3000"
-
-cors_origins_str = settings.ALLOWED_ORIGINS if settings.ALLOWED_ORIGINS and settings.ALLOWED_ORIGINS != "*" else DEFAULT_ORIGINS
-origins = [o.strip() for o in cors_origins_str.split(",") if o.strip()]
-
-print(f"🔒 CORS allowed origins: {origins}")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["*"],
-    max_age=600,
-)
-
-
+# ── Security Headers (AFTER CORS) ──────────────────────────────────────────
 @app.middleware("http")
 async def security_headers_middleware(request: Request, call_next):
+    # Skip CORS preflight requests - let CORS middleware handle them
+    if request.method == "OPTIONS":
+        return await call_next(request)
+    
     # Enforce HTTPS if x-forwarded-proto is http
     if request.headers.get("x-forwarded-proto") == "http":
         url = request.url.replace(scheme="https")
