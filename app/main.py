@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,12 +21,11 @@ app = FastAPI(
 
 
 # ── Database Table Creation ─────────────────────────────────────────────────
-@app.on_event("startup")
-async def create_tables():
-    """Create all database tables on startup if they don't exist."""
+def _setup_database():
+    """Synchronous database setup function to run in thread."""
     try:
-        # Test database connection first
         from sqlalchemy import text
+        # Test connection with short timeout
         with engine.connect() as conn:
             result = conn.execute(text("SELECT 1"))
             print(f"✅ Database connected: {result.scalar()}")
@@ -33,10 +33,19 @@ async def create_tables():
         # Create tables
         Base.metadata.create_all(bind=engine)
         print("✅ Database tables created/verified successfully")
+        return True
     except Exception as e:
         print(f"❌ Database connection failed: {e}")
-        print(f"   DATABASE_URL type: {type(settings.DATABASE_URL)}")
-        print(f"   DATABASE_URL host: {settings.DATABASE_URL.split('@')[-1] if '@' in settings.DATABASE_URL else 'N/A'}")
+        print(f"   DATABASE_URL set: {bool(settings.DATABASE_URL)}")
+        if settings.DATABASE_URL and '@' in settings.DATABASE_URL:
+            print(f"   Host: {settings.DATABASE_URL.split('@')[-1]}")
+        return False
+
+@app.on_event("startup")
+async def create_tables():
+    """Create all database tables on startup if they don't exist (non-blocking)."""
+    # Run in thread pool to not block startup
+    asyncio.create_task(asyncio.to_thread(_setup_database))
 
 
 # ── CORS ────────────────────────────────────────────────────────────────────
