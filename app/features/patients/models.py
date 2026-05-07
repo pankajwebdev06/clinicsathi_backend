@@ -18,6 +18,15 @@ class Patient(Base):
     name = Column(String(100), nullable=False)
     age = Column(Integer, nullable=False)
     gender = Column(Enum(Gender), nullable=False)
+    
+    # Consent & Legal Fields
+    consent_given = Column(Boolean, nullable=False, default=False)
+    consent_timestamp = Column(DateTime, nullable=True)
+    consent_given_by = Column(String(20), default='receptionist')
+    is_minor = Column(Boolean, nullable=True)
+    guardian_name = Column(String(100), nullable=True)
+    guardian_relationship = Column(String(50), nullable=True)
+    
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     

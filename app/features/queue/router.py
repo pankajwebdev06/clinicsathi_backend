@@ -90,7 +90,7 @@ async def update_queue_entry(
     current_user: User = Depends(require_role("doctor", "receptionist")),
 ):
     """Update a queue entry's status or priority. Doctor or receptionist."""
-    entry = db.query(QueueEntry).filter(QueueEntry.id == entry_id).first()
+    entry = db.query(QueueEntry).filter(QueueEntry.id == entry_id, QueueEntry.clinic_id == current_user.clinic_id).first()
     if not entry:
         raise HTTPException(status_code=404, detail="Queue entry not found")
 
@@ -121,12 +121,21 @@ async def remove_from_queue(
     current_user: User = Depends(require_role("receptionist")),
 ):
     """Remove a patient from the queue. Receptionist only."""
-    entry = db.query(QueueEntry).filter(QueueEntry.id == entry_id).first()
+    entry = db.query(QueueEntry).filter(QueueEntry.id == entry_id, QueueEntry.clinic_id == current_user.clinic_id).first()
     if not entry:
         raise HTTPException(status_code=404, detail="Queue entry not found")
 
+    clinic_id = entry.clinic_id
+    token_number = entry.token_number
     db.delete(entry)
     db.commit()
+
+    # Broadcast update to all clinic devices
+    await manager.broadcast_to_clinic(clinic_id, {
+        "event": "QUEUE_UPDATED",
+        "message": f"Patient removed from queue: {token_number}",
+        "entry_id": entry_id
+    })
 
 
 # ── HELPER ──────────────────────────────────────────────
@@ -134,9 +143,20 @@ def _generate_token(db: Session, clinic_id: str) -> str:
     """Auto-generate the next token number for a clinic (e.g. M-001, M-002...)."""
     today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
 
-    count = db.query(QueueEntry).filter(
+    last_entry = db.query(QueueEntry).filter(
         QueueEntry.clinic_id == clinic_id,
         QueueEntry.created_at >= today_start
-    ).count()
+    ).order_by(QueueEntry.created_at.desc()).first()
 
-    return f"M-{count + 1:03d}"
+    if not last_entry:
+        return "M-001"
+    
+    try:
+        last_num = int(last_entry.token_number.split("-")[1])
+        return f"M-{last_num + 1:03d}"
+    except (ValueError, IndexError):
+        count = db.query(QueueEntry).filter(
+            QueueEntry.clinic_id == clinic_id,
+            QueueEntry.created_at >= today_start
+        ).count()
+        return f"M-{count + 1:03d}"

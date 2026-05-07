@@ -10,6 +10,8 @@ class ClinicCreate(BaseModel):
     specialization: Optional[str] = None
     city: Optional[str] = None
     address: Optional[str] = None
+    mci_number: Optional[str] = None
+    gstin: Optional[str] = None
     phone: Optional[str] = None
 
 
@@ -20,6 +22,8 @@ class ClinicResponse(BaseModel):
     specialization: Optional[str] = None
     city: Optional[str] = None
     address: Optional[str] = None
+    mci_number: Optional[str] = None
+    gstin: Optional[str] = None
     phone: Optional[str] = None
     is_active: bool
     created_at: datetime

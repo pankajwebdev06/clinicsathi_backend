@@ -8,6 +8,7 @@ from app.core.deps import get_current_user, require_role
 from app.features.auth.models import User
 from app.features.patients.models import Patient
 from app.features.patients.schemas import PatientCreate, PatientResponse
+from datetime import datetime
 
 router = APIRouter()
 
@@ -28,10 +29,17 @@ async def create_patient(
     if existing:
         raise HTTPException(status_code=400, detail="Patient already exists for this clinic")
 
+    if not patient_data.consent_given:
+        raise HTTPException(status_code=400, detail="Patient consent is required before registration.")
+
     # Create new patient
+    new_patient_dict = patient_data.model_dump()
+    new_patient_dict["is_minor"] = new_patient_dict["age"] < 18
+    new_patient_dict["consent_timestamp"] = datetime.utcnow()
+    
     new_patient = Patient(
         id=str(uuid.uuid4()),
-        **patient_data.model_dump()
+        **new_patient_dict
     )
     db.add(new_patient)
     db.commit()
@@ -50,3 +58,33 @@ async def get_patients(
     """List all patients for a clinic. Accessible by doctor or receptionist."""
     patients = db.query(Patient).filter(Patient.clinic_id == clinic_id).offset(skip).limit(limit).all()
     return patients
+
+
+@router.get("/export", response_model=dict)
+async def export_patients(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("doctor")),
+):
+    """Export all patient records for a clinic. Accessible by doctor only."""
+    patients = db.query(Patient).filter(Patient.clinic_id == current_user.clinic_id).all()
+    
+    # Exclude internal ORM state
+    patient_list = []
+    for p in patients:
+        p_dict = {
+            "id": p.id,
+            "mobile_number": p.mobile_number,
+            "name": p.name,
+            "age": p.age,
+            "gender": p.gender.value,
+            "consent_given": p.consent_given,
+            "consent_timestamp": p.consent_timestamp.isoformat() if p.consent_timestamp else None,
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+        }
+        patient_list.append(p_dict)
+        
+    return {
+        "exportedAt": datetime.utcnow().isoformat(),
+        "totalRecords": len(patient_list),
+        "data": patient_list
+    }

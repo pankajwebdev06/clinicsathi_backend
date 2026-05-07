@@ -33,6 +33,8 @@ class Clinic(Base):
     specialization = Column(String(100))
     city = Column(String(100))
     address = Column(String(500))
+    mci_number = Column(String(20))
+    gstin = Column(String(15))
     phone = Column(String(15))
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

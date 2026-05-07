@@ -1,7 +1,25 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from fastapi import Request
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
+import time
+
+# Simple in-memory rate limiter for login
+login_attempts = {}
+def check_rate_limit(ip: str):
+    now = time.time()
+    # clean up old entries
+    if ip in login_attempts:
+        login_attempts[ip] = [t for t in login_attempts[ip] if now - t < 900] # 15 mins = 900s
+    else:
+        login_attempts[ip] = []
+        
+    if len(login_attempts[ip]) >= 10:
+        return False
+        
+    login_attempts[ip].append(now)
+    return True
 
 from app.core.database import get_db
 from app.core.security import hash_password, verify_password, create_access_token
@@ -91,9 +109,14 @@ async def register_user(
 @router.post("/login", response_model=TokenResponse)
 async def login(
     data: UserLogin,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """Login with mobile number and password. Returns JWT token."""
+    client_ip = request.client.host if request.client else "unknown"
+    if not check_rate_limit(client_ip):
+        raise HTTPException(status_code=429, detail="Too many login attempts. Please wait 15 minutes.")
+
     user = db.query(User).filter(User.mobile_number == data.mobile_number).first()
 
     if not user or not verify_password(data.password, user.hashed_password):
