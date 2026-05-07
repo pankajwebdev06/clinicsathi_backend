@@ -35,21 +35,28 @@ class ClinicResponse(BaseModel):
 # ── User / Auth ─────────────────────────────────────────
 class UserRegister(BaseModel):
     mobile_number: str = Field(..., min_length=10, max_length=10)
+    email: Optional[str] = Field(None, description="Optional email for notifications")
     name: str = Field(..., min_length=2, max_length=100)
-    password: str = Field(..., min_length=6)
     role: str = Field("doctor", description="doctor | receptionist | admin")
     clinic_id: str
 
 
-class UserLogin(BaseModel):
+class SendOTPRequest(BaseModel):
+    """Request OTP for login - sent to mobile/email"""
     mobile_number: str = Field(..., min_length=10, max_length=10)
-    password: str = Field(..., min_length=6)
+
+
+class VerifyOTPRequest(BaseModel):
+    """Verify OTP and login"""
+    mobile_number: str = Field(..., min_length=10, max_length=10)
+    otp_code: str = Field(..., min_length=6, max_length=6, description="6-digit OTP code")
 
 
 class UserResponse(BaseModel):
     id: str
     clinic_id: str
     mobile_number: str
+    email: Optional[str] = None
     name: str
     role: str
     is_active: bool
@@ -63,3 +70,12 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserResponse
+
+
+class OTPResponse(BaseModel):
+    """Response after requesting OTP"""
+    message: str
+    expires_in_seconds: int = 300  # 5 minutes default
+    # In production, don't return OTP in response - send via SMS/Email
+    # This is for demo/testing purposes
+    demo_otp: Optional[str] = None  # Only for development!

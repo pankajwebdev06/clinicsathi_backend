@@ -25,6 +25,18 @@ class Settings(BaseSettings):
     CLOUDINARY_API_KEY: Optional[str] = None
     CLOUDINARY_API_SECRET: Optional[str] = None
 
+    # ─── OTP Services ───────────────────────────────────────────────────────────
+    # Fast2SMS for India SMS (https://www.fast2sms.com/)
+    FAST2SMS_API_KEY: Optional[str] = None
+    
+    # WhatsApp Business API (Meta)
+    WHATSAPP_PHONE_NUMBER_ID: Optional[str] = None
+    WHATSAPP_ACCESS_TOKEN: Optional[str] = None
+    
+    # SendGrid for Email
+    SENDGRID_API_KEY: Optional[str] = None
+    SENDER_EMAIL: str = "noreply@clinicsathi.in"
+
     # ─── CORS ─────────────────────────────────────────────────────────────────
     # Comma-separated list of allowed origins. Set in Render env vars for production.
     ALLOWED_ORIGINS: str = "*"

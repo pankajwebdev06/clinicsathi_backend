@@ -16,9 +16,12 @@ class User(Base):
     id = Column(String, primary_key=True)
     clinic_id = Column(String, nullable=False, index=True)
     mobile_number = Column(String(10), nullable=False, unique=True, index=True)
+    email = Column(String(100), nullable=True)  # Optional email for notifications
     name = Column(String(100), nullable=False)
     role = Column(Enum(UserRole), nullable=False)
-    hashed_password = Column(String, nullable=False)
+    # OTP fields - no password needed
+    otp_code = Column(String(6), nullable=True)  # 6-digit OTP
+    otp_expires_at = Column(DateTime, nullable=True)  # OTP expiry time
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
