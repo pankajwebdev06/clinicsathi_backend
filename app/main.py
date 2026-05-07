@@ -2,6 +2,14 @@ from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
+from app.core.database import engine, Base
+
+# Import all models so SQLAlchemy knows about them for table creation
+from app.features.auth.models import User, Clinic  # noqa: F401
+from app.features.patients.models import Patient  # noqa: F401
+from app.features.queue.models import QueueEntry  # noqa: F401
+from app.features.consultations.models import Consultation  # noqa: F401
+from app.features.prescriptions.models import Prescription, PrescriptionMedicine  # noqa: F401
 
 app = FastAPI(
     title="ClinicSathi API",
@@ -9,6 +17,18 @@ app = FastAPI(
     docs_url="/api/docs",
     redoc_url="/api/redoc",
 )
+
+
+# ── Database Table Creation ─────────────────────────────────────────────────
+@app.on_event("startup")
+async def create_tables():
+    """Create all database tables on startup if they don't exist."""
+    try:
+        Base.metadata.create_all(bind=engine)
+        print("✅ Database tables created/verified successfully")
+    except Exception as e:
+        print(f"⚠️ Database table creation warning: {e}")
+
 
 # ── CORS ────────────────────────────────────────────────────────────────────
 # In production set ALLOWED_ORIGINS env var to your Vercel domain(s)
