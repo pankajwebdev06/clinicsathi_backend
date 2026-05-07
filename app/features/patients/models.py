@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, DateTime, Enum, UniqueConstraint
+from sqlalchemy import Column, String, Integer, DateTime, Enum, UniqueConstraint, Boolean
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 import enum
