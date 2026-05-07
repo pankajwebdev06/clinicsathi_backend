@@ -24,10 +24,19 @@ app = FastAPI(
 async def create_tables():
     """Create all database tables on startup if they don't exist."""
     try:
+        # Test database connection first
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            result = conn.execute(text("SELECT 1"))
+            print(f"✅ Database connected: {result.scalar()}")
+        
+        # Create tables
         Base.metadata.create_all(bind=engine)
         print("✅ Database tables created/verified successfully")
     except Exception as e:
-        print(f"⚠️ Database table creation warning: {e}")
+        print(f"❌ Database connection failed: {e}")
+        print(f"   DATABASE_URL type: {type(settings.DATABASE_URL)}")
+        print(f"   DATABASE_URL host: {settings.DATABASE_URL.split('@')[-1] if '@' in settings.DATABASE_URL else 'N/A'}")
 
 
 # ── CORS ────────────────────────────────────────────────────────────────────
