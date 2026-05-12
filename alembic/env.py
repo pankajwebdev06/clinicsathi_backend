@@ -2,13 +2,19 @@ from logging.config import fileConfig
 import os
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
+from sqlalchemy.engine.url import make_url
 
 from alembic import context
 from app.core.database import Base
+from app.core.config import settings
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
+
+# Use DATABASE_URL from environment variable if available
+if settings.DATABASE_URL and settings.DATABASE_URL != "sqlite:///./clinicsathi.db":
+    config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
