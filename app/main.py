@@ -103,6 +103,30 @@ async def health_check():
     return {"status": "healthy", "version": settings.VERSION}
 
 
+# ── Run Migrations (for free tier without Shell access) ─────────────────────
+@app.post("/run-migrations")
+async def run_migrations():
+    """Run Alembic migrations. Call this endpoint to update database schema."""
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["alembic", "upgrade", "head"],
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+        return {
+            "success": True,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "returncode": result.returncode
+        }
+    except subprocess.TimeoutExpired:
+        return {"success": False, "error": "Migration timed out"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 # ── Routers ──────────────────────────────────────────────────────────────────
 from app.features.patients.router import router as patients_router
 from app.features.queue.router import router as queue_router
