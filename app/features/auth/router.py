@@ -1,10 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session
 from fastapi import Request
+from typing import Optional
 import uuid
 import random
 from datetime import datetime, timedelta
 import time
+import cloudinary
+import cloudinary.uploader
 
 # Simple in-memory rate limiter for OTP
 otp_attempts = {}
@@ -24,10 +27,11 @@ from app.core.security import create_access_token
 from app.core.deps import get_current_user, require_role
 from app.features.auth.models import User, Clinic, UserRole
 from app.features.auth.schemas import (
-    ClinicCreate, ClinicResponse,
+    ClinicCreate, ClinicUpdate, ClinicResponse,
     UserRegister, UserResponse, TokenResponse,
     SendOTPRequest, VerifyOTPRequest, OTPResponse,
 )
+from app.utils.slug import generate_unique_slug
 
 router = APIRouter()
 
@@ -47,9 +51,13 @@ async def register_clinic(
     db: Session = Depends(get_db)
 ):
     """Register a new clinic. This is the first step in onboarding."""
+    # Generate unique slug for public profile
+    slug = generate_unique_slug(data.doctor_name, data.city, db)
+    
     clinic = Clinic(
         id=str(uuid.uuid4()),
         name=data.name,
+        slug=slug,
         doctor_name=data.doctor_name,
         specialization=data.specialization,
         city=data.city,
@@ -73,6 +81,95 @@ async def get_clinic(
     if not clinic:
         raise HTTPException(status_code=404, detail="Clinic not found")
     return clinic
+
+
+@router.get("/public/profile/{slug}", response_model=ClinicResponse)
+async def get_public_profile(
+    slug: str,
+    db: Session = Depends(get_db)
+):
+    """Get public clinic profile by slug (no auth required)."""
+    clinic = db.query(Clinic).filter(Clinic.slug == slug, Clinic.is_active == True).first()
+    if not clinic:
+        raise HTTPException(status_code=404, detail="Clinic profile not found")
+    return clinic
+
+
+@router.get("/public/doctors", response_model=list[ClinicResponse])
+async def list_public_doctors(
+    skip: int = 0,
+    limit: int = 100,
+    city: Optional[str] = None,
+    specialization: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """List all active doctors/clinics (no auth required). Supports filtering by city and specialization."""
+    query = db.query(Clinic).filter(Clinic.is_active == True)
+    
+    if city:
+        query = query.filter(Clinic.city.ilike(f"%{city}%"))
+    if specialization:
+        query = query.filter(Clinic.specialization.ilike(f"%{specialization}%"))
+    
+    doctors = query.order_by(Clinic.created_at.desc()).offset(skip).limit(limit).all()
+    return doctors
+
+
+@router.put("/clinics/{clinic_id}", response_model=ClinicResponse)
+async def update_clinic(
+    clinic_id: str,
+    data: ClinicUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Update clinic details (doctor can update their own clinic)."""
+    clinic = db.query(Clinic).filter(Clinic.id == clinic_id).first()
+    if not clinic:
+        raise HTTPException(status_code=404, detail="Clinic not found")
+    
+    # Only allow doctor/admin to update their own clinic
+    if current_user.role != UserRole.ADMIN and current_user.clinic_id != clinic_id:
+        raise HTTPException(status_code=403, detail="Not authorized to update this clinic")
+    
+    # Update fields if provided
+    update_data = data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(clinic, field, value)
+    
+    clinic.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(clinic)
+    return clinic
+
+
+@router.post("/upload-image")
+async def upload_image(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user)
+):
+    """Upload image to Cloudinary and return URL."""
+    # Validate file type
+    if not file.content_type or not file.content_type.startswith('image/'):
+        raise HTTPException(status_code=400, detail="Only image files are allowed")
+    
+    # Read file content
+    contents = await file.read()
+    
+    try:
+        # Upload to Cloudinary
+        result = cloudinary.uploader.upload(
+            contents,
+            folder="clinicsathi",
+            resource_type="image",
+            allowed_formats=["jpg", "jpeg", "png", "webp"],
+            max_file_size=5 * 1024 * 1024,  # 5MB
+            transformation=[
+                {"width": 800, "height": 800, "crop": "limit", "quality": "auto"}
+            ]
+        )
+        return {"url": result["secure_url"], "public_id": result["public_id"]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Image upload failed: {str(e)}")
 
 
 # ═══════════════════════════════════════════════════════

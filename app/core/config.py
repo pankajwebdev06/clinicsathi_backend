@@ -16,6 +16,11 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "CHANGE_ME_IN_PRODUCTION_USE_ENV"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8  # 8 days
 
+    # ─── Admin Panel Credentials (env-based, no OTP) ──────────────────────────
+    # Set these in .env and Render/Vercel environment variables
+    ADMIN_SECRET_KEY: Optional[str] = None
+    ADMIN_PASSWORD: Optional[str] = None
+
     # ─── Supabase Storage (for image uploads) ─────────────────────────────────
     SUPABASE_URL: Optional[str] = None
     SUPABASE_SERVICE_KEY: Optional[str] = None   # service_role key (not anon)

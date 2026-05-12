@@ -15,18 +15,49 @@ class ClinicCreate(BaseModel):
     phone: Optional[str] = None
 
 
-class ClinicResponse(BaseModel):
-    id: str
-    name: str
-    doctor_name: str
+class ClinicUpdate(BaseModel):
+    name: Optional[str] = None
+    doctor_name: Optional[str] = None
     specialization: Optional[str] = None
+    degree: Optional[str] = None
+    experience: Optional[str] = None
     city: Optional[str] = None
     address: Optional[str] = None
     mci_number: Optional[str] = None
     gstin: Optional[str] = None
     phone: Optional[str] = None
+    doctor_photo: Optional[str] = None
+    clinic_photo: Optional[str] = None
+    meta_title: Optional[str] = None
+    meta_description: Optional[str] = None
+    about_doctor: Optional[str] = None
+    services: Optional[str] = None
+    consultation_fee: Optional[str] = None
+
+
+class ClinicResponse(BaseModel):
+    id: str
+    name: str
+    slug: str
+    doctor_name: str
+    specialization: Optional[str] = None
+    degree: Optional[str] = None
+    experience: Optional[str] = None
+    city: Optional[str] = None
+    address: Optional[str] = None
+    mci_number: Optional[str] = None
+    gstin: Optional[str] = None
+    phone: Optional[str] = None
+    doctor_photo: Optional[str] = None
+    clinic_photo: Optional[str] = None
+    meta_title: Optional[str] = None
+    meta_description: Optional[str] = None
+    about_doctor: Optional[str] = None
+    services: Optional[str] = None
+    consultation_fee: Optional[str] = None
     is_active: bool
     created_at: datetime
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
