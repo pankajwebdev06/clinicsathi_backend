@@ -14,7 +14,9 @@ config = context.config
 
 # Use DATABASE_URL from environment variable if available
 if settings.DATABASE_URL and settings.DATABASE_URL != "sqlite:///./clinicsathi.db":
-    config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+    # Escape special characters for configparser
+    db_url = settings.DATABASE_URL.replace('%', '%%')
+    config.set_main_option("sqlalchemy.url", db_url)
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
