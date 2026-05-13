@@ -11,3 +11,4 @@ python-jose[cryptography]==3.3.0
 alembic==1.13.1
 Pillow>=10.3.0
 cloudinary==1.39.0
+requests==2.31.0

@@ -11,7 +11,7 @@ from app.features.patients.models import Patient  # noqa: F401
 from app.features.queue.models import QueueEntry  # noqa: F401
 from app.features.consultations.models import Consultation  # noqa: F401
 from app.features.prescriptions.models import Prescription, PrescriptionMedicine  # noqa: F401
-from app.features.admin.models import BlogPost, AdminTeamMember  # noqa: F401
+from app.features.admin.models import BlogPost, AdminTeamMember, Subscription  # noqa: F401
 
 app = FastAPI(
     title="ClinicSathi API",
@@ -134,6 +134,7 @@ from app.features.auth.router import router as auth_router
 from app.features.consultations.router import router as consultations_router
 from app.features.prescriptions.router import router as prescriptions_router
 from app.features.admin.router import router as admin_router
+from app.features.admin.subscription_router import router as subscription_router
 
 app.include_router(auth_router,          prefix="/api/v1/auth",          tags=["Auth"])
 app.include_router(patients_router,      prefix="/api/v1/patients",      tags=["Patients"])
@@ -141,3 +142,4 @@ app.include_router(queue_router,         prefix="/api/v1/queue",         tags=["
 app.include_router(consultations_router, prefix="/api/v1/consultations", tags=["Consultations"])
 app.include_router(prescriptions_router, prefix="/api/v1/prescriptions", tags=["Prescriptions"])
 app.include_router(admin_router,         prefix="/api/v1/admin",         tags=["Admin"])
+app.include_router(subscription_router,  prefix="/api/v1/subscriptions", tags=["Subscriptions"])
