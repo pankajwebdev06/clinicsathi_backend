@@ -7,7 +7,7 @@ from app.core.database import get_db
 from app.core.deps import get_current_user, require_role
 from app.features.auth.models import User
 from app.features.patients.models import Patient
-from app.features.patients.schemas import PatientCreate, PatientResponse
+from app.features.patients.schemas import PatientCreate, PatientResponse, PatientUpdate
 from datetime import datetime
 
 router = APIRouter()
@@ -58,6 +58,27 @@ async def get_patients(
     """List all patients for a clinic. Accessible by doctor or receptionist."""
     patients = db.query(Patient).filter(Patient.clinic_id == clinic_id).offset(skip).limit(limit).all()
     return patients
+
+@router.patch("/{patient_id}", response_model=PatientResponse)
+async def update_patient(
+    patient_id: str,
+    patient_data: PatientUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("doctor", "receptionist")),
+):
+    """Update patient details."""
+    patient = db.query(Patient).filter(Patient.id == patient_id).first()
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    update_data = patient_data.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(patient, key, value)
+
+    patient.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(patient)
+    return patient
 
 
 @router.get("/export", response_model=dict)

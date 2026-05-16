@@ -140,8 +140,15 @@ async def remove_from_queue(
 
 # ── HELPER ──────────────────────────────────────────────
 def _generate_token(db: Session, clinic_id: str) -> str:
-    """Auto-generate the next token number for a clinic (e.g. M-001, M-002...)."""
+    """Auto-generate the next token number for a clinic (e.g. A-001, B-002...)."""
     today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+
+    from app.features.auth.models import Clinic
+    clinic = db.query(Clinic).filter(Clinic.id == clinic_id).first()
+    prefix = "T"
+    if clinic and clinic.name:
+        # Extract first letter of the clinic name
+        prefix = clinic.name[0].upper()
 
     last_entry = db.query(QueueEntry).filter(
         QueueEntry.clinic_id == clinic_id,
@@ -149,14 +156,14 @@ def _generate_token(db: Session, clinic_id: str) -> str:
     ).order_by(QueueEntry.created_at.desc()).first()
 
     if not last_entry:
-        return "M-001"
+        return f"{prefix}-001"
     
     try:
         last_num = int(last_entry.token_number.split("-")[1])
-        return f"M-{last_num + 1:03d}"
+        return f"{prefix}-{last_num + 1:03d}"
     except (ValueError, IndexError):
         count = db.query(QueueEntry).filter(
             QueueEntry.clinic_id == clinic_id,
             QueueEntry.created_at >= today_start
         ).count()
-        return f"M-{count + 1:03d}"
+        return f"{prefix}-{count + 1:03d}"

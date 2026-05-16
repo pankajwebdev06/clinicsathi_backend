@@ -34,37 +34,142 @@ def verify_admin_token(x_admin_token: str = Header(...)) -> dict:
 
 # ─── Login ───────────────────────────────────────────────────────────────────
 
+from app.core.security import hash_password, verify_password
+
 @router.post("/auth/login")
-async def admin_login(data: dict):
+async def admin_login(data: dict, db: Session = Depends(get_db)):
     """
-    Admin panel login using env-based credentials.
-    Body: { "admin_key": "...", "admin_password": "..." }
-    Returns a signed JWT on success.
+    Admin panel login using Database credentials.
     """
-    admin_key = data.get("admin_key", "")
-    admin_password = data.get("admin_password", "")
+    user_id = data.get("admin_key", "")
+    password = data.get("admin_password", "")
 
-    expected_key = settings.ADMIN_SECRET_KEY or ""
-    expected_password = settings.ADMIN_PASSWORD or ""
+    admin_user = db.query(AdminTeamMember).filter(AdminTeamMember.user_id == user_id).first()
 
-    if not expected_key or not expected_password:
-        raise HTTPException(
-            status_code=503,
-            detail="Admin credentials not configured on server. Set ADMIN_SECRET_KEY and ADMIN_PASSWORD in .env",
-        )
+    # Create default user if no admins exist
+    if not admin_user:
+        count = db.query(AdminTeamMember).count()
+        if count == 0 and user_id == "admin" and password == "admin123":
+            admin_user = AdminTeamMember(
+                id=str(uuid.uuid4()),
+                name="System Admin",
+                user_id="admin",
+                email="admin@clinicsathi.com",
+                password_hash=hash_password("admin123"),
+                role=AdminTeamRole.SUPER_ADMIN,
+                is_active=True,
+                must_change_password=True,
+                created_at=datetime.utcnow(),
+            )
+            db.add(admin_user)
+            db.commit()
+            db.refresh(admin_user)
+        else:
+            raise HTTPException(status_code=401, detail="Invalid User ID or password")
 
-    if admin_key != expected_key or admin_password != expected_password:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid admin credentials",
-        )
+    if not verify_password(password, admin_user.password_hash):
+        raise HTTPException(status_code=401, detail="Invalid User ID or password")
+
+    if not admin_user.is_active:
+        raise HTTPException(status_code=401, detail="Account disabled")
+
+    # If user must change password, return special flag
+    if admin_user.must_change_password:
+        return {
+            "require_setup": True,
+            "setup_token": create_access_token(
+                data={"sub": admin_user.id, "setup": True},
+                expires_delta=timedelta(minutes=15)
+            )
+        }
 
     token = create_access_token(data={
-        "sub": "admin_panel",
+        "sub": admin_user.id,
         "role": "admin_panel",
     }, expires_delta=timedelta(hours=12))
 
     return {"access_token": token, "token_type": "bearer"}
+
+
+@router.post("/auth/setup")
+async def admin_setup(data: dict, db: Session = Depends(get_db)):
+    """
+    Setup new User ID and Password during forced password change.
+    """
+    setup_token = data.get("setup_token")
+    new_user_id = data.get("new_user_id")
+    new_password = data.get("new_password")
+    
+    from app.core.security import decode_access_token
+    payload = decode_access_token(setup_token)
+    if not payload or not payload.get("setup"):
+        raise HTTPException(status_code=401, detail="Invalid or expired setup token")
+        
+    admin_user = db.query(AdminTeamMember).filter(AdminTeamMember.id == payload.get("sub")).first()
+    if not admin_user:
+        raise HTTPException(status_code=404, detail="Admin not found")
+        
+    # Check if new user_id is already taken by someone else
+    existing = db.query(AdminTeamMember).filter(AdminTeamMember.user_id == new_user_id, AdminTeamMember.id != admin_user.id).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="User ID already taken")
+        
+    admin_user.user_id = new_user_id
+    admin_user.password_hash = hash_password(new_password)
+    admin_user.must_change_password = False
+    db.commit()
+    
+    return {"message": "Account setup successful! Please log in."}
+
+
+@router.post("/auth/forgot")
+async def admin_forgot(data: dict, db: Session = Depends(get_db)):
+    """
+    Forgot User ID / Password endpoint.
+    """
+    email = data.get("email")
+    admin_user = db.query(AdminTeamMember).filter(AdminTeamMember.email == email).first()
+    
+    if admin_user:
+        # In a real system, send an email. For now, print to server logs.
+        print(f"FORGOT PASSWORD REQUEST: User ID: {admin_user.user_id}, Email: {email}")
+        
+    # Always return success to prevent email enumeration
+    return {"message": "If that email exists, an instruction has been sent."}
+
+
+@router.put("/auth/security")
+async def update_security(
+    data: dict,
+    db: Session = Depends(get_db),
+    admin_info: dict = Depends(verify_admin_token)
+):
+    """
+    Allow a logged-in admin to change their user_id and password.
+    """
+    admin_id = admin_info.get("sub")
+    admin_user = db.query(AdminTeamMember).filter(AdminTeamMember.id == admin_id).first()
+    if not admin_user:
+        raise HTTPException(status_code=404, detail="Admin not found")
+
+    new_user_id = data.get("new_user_id")
+    new_password = data.get("new_password")
+
+    if new_user_id:
+        existing = db.query(AdminTeamMember).filter(
+            AdminTeamMember.user_id == new_user_id, 
+            AdminTeamMember.id != admin_user.id
+        ).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="User ID already taken by someone else")
+        admin_user.user_id = new_user_id
+
+    if new_password:
+        admin_user.password_hash = hash_password(new_password)
+
+    db.commit()
+    return {"message": "Security settings updated successfully"}
+
 
 
 # ─── System Stats ─────────────────────────────────────────────────────────────
@@ -256,7 +361,8 @@ async def list_payments(
         )).fetchall()
         payments = [dict(r._mapping) for r in rows]
         return payments
-    except Exception:
+    except Exception as e:
+        db.rollback()  # Crucial: Rollback the failed transaction so we can query again
         # Table doesn't exist yet — return per-clinic stubs
         clinics = db.query(Clinic).all()
         return [

@@ -49,9 +49,12 @@ class AdminTeamMember(Base):
 
     id = Column(String, primary_key=True)
     name = Column(String(100), nullable=False)
+    user_id = Column(String(100), nullable=False, unique=True)
     email = Column(String(200), nullable=False, unique=True)
+    password_hash = Column(String(200), nullable=False)
     role = Column(Enum(AdminTeamRole), nullable=False, default=AdminTeamRole.EDITOR)
     is_active = Column(Boolean, default=True, nullable=False)
+    must_change_password = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 

@@ -17,7 +17,9 @@ def check_otp_rate_limit(ip: str):
         otp_attempts[ip] = [t for t in otp_attempts[ip] if now - t < 300]  # 5 mins
     else:
         otp_attempts[ip] = []
-    if len(otp_attempts[ip]) >= 5:  # Max 5 OTP requests per 5 mins
+    # TODO (Production): Revert this limit to '>= 5' before final production deployment.
+    # Currently increased to 50 to allow extensive local testing by the developer without getting blocked.
+    if len(otp_attempts[ip]) >= 50:  # Max 50 OTP requests per 5 mins
         return False
     otp_attempts[ip].append(now)
     return True
@@ -89,7 +91,7 @@ async def get_public_profile(
     db: Session = Depends(get_db)
 ):
     """Get public clinic profile by slug (no auth required)."""
-    clinic = db.query(Clinic).filter(Clinic.slug == slug, Clinic.is_active == True).first()
+    clinic = db.query(Clinic).filter(Clinic.slug == slug, Clinic.is_active != False).first()
     if not clinic:
         raise HTTPException(status_code=404, detail="Clinic profile not found")
     return clinic
@@ -104,7 +106,7 @@ async def list_public_doctors(
     db: Session = Depends(get_db)
 ):
     """List all active doctors/clinics (no auth required). Supports filtering by city and specialization."""
-    query = db.query(Clinic).filter(Clinic.is_active == True)
+    query = db.query(Clinic).filter(Clinic.is_active != False)
     
     if city:
         query = query.filter(Clinic.city.ilike(f"%{city}%"))

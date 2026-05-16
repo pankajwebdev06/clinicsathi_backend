@@ -8,6 +8,14 @@ from alembic import context
 from app.core.database import Base
 from app.core.config import settings
 
+# Import all models so SQLAlchemy knows about them for table creation
+from app.features.auth.models import User, Clinic
+from app.features.patients.models import Patient
+from app.features.queue.models import QueueEntry
+from app.features.consultations.models import Consultation
+from app.features.prescriptions.models import Prescription, PrescriptionMedicine
+from app.features.admin.models import BlogPost, AdminTeamMember, Subscription
+
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config

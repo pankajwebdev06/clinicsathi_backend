@@ -23,7 +23,7 @@ app = FastAPI(
 
 # ── CORS (MUST BE FIRST) ───────────────────────────────────────────────────
 # In production set ALLOWED_ORIGINS env var to your Vercel domain(s)
-DEFAULT_ORIGINS = "https://clinicsathi-frontend.vercel.app,https://clinic-sathi.vercel.app,http://localhost:3000,http://127.0.0.1:3000"
+DEFAULT_ORIGINS = "https://clinicsathi-frontend.vercel.app,https://clinic-sathi.vercel.app,http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,http://localhost:3002,http://127.0.0.1:3002"
 
 cors_origins_str = settings.ALLOWED_ORIGINS if settings.ALLOWED_ORIGINS and settings.ALLOWED_ORIGINS != "*" else DEFAULT_ORIGINS
 origins = [o.strip() for o in cors_origins_str.split(",") if o.strip()]
@@ -32,9 +32,9 @@ print(f"🔒 CORS allowed origins: {origins}")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=origins if origins else ["*"],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
     max_age=86400,
@@ -53,6 +53,30 @@ def _setup_database():
         
         # Create tables
         Base.metadata.create_all(bind=engine)
+        
+        # Auto-migrate new admin columns
+        try:
+            with engine.connect() as conn:
+                try:
+                    conn.execute(text("ALTER TABLE admin_team_members ADD COLUMN IF NOT EXISTS user_id VARCHAR(100);"))
+                    conn.execute(text("ALTER TABLE admin_team_members ADD COLUMN IF NOT EXISTS password_hash VARCHAR(200);"))
+                    conn.execute(text("ALTER TABLE admin_team_members ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT FALSE;"))
+                    
+                    # Add unique constraint if it doesn't exist
+                    conn.execute(text("""
+                        DO $$
+                        BEGIN
+                            IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'uq_admin_user_id') THEN
+                                ALTER TABLE admin_team_members ADD CONSTRAINT uq_admin_user_id UNIQUE (user_id);
+                            END IF;
+                        END $$;
+                    """))
+                    conn.commit()
+                except Exception as e:
+                    print(f"Migration note (expected if exists): {e}")
+        except Exception as e:
+            print(f"Migration error: {e}")
+            
         print("✅ Database tables created/verified successfully")
         return True
     except Exception as e:
