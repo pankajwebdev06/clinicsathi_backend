@@ -19,9 +19,10 @@ router = APIRouter()
 async def create_consultation(
     data: ConsultationCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("doctor")),
+    current_user: User = Depends(require_role("doctor", "receptionist")),
 ):
-    """Create a new consultation with doctor notes. Doctor only."""
+    """Create a new consultation. Doctor creates with notes; receptionist creates
+    an empty consultation row when uploading a handwritten prescription / report."""
     consultation = Consultation(
         id=str(uuid.uuid4()),
         **data.model_dump()

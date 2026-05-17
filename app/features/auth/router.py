@@ -53,9 +53,14 @@ async def register_clinic(
     db: Session = Depends(get_db)
 ):
     """Register a new clinic. This is the first step in onboarding."""
-    # Generate unique slug for public profile
-    slug = generate_unique_slug(data.doctor_name, data.city, db)
-    
+    # Generate unique slug for public profile (doctor-name-specialization-city)
+    slug = generate_unique_slug(
+        doctor_name=data.doctor_name,
+        city=data.city,
+        specialization=data.specialization,
+        db=db,
+    )
+
     clinic = Clinic(
         id=str(uuid.uuid4()),
         name=data.name,
@@ -64,6 +69,7 @@ async def register_clinic(
         specialization=data.specialization,
         city=data.city,
         address=data.address,
+        mci_number=data.mci_number,
         phone=data.phone,
         created_at=datetime.utcnow(),
     )
@@ -135,9 +141,21 @@ async def update_clinic(
     
     # Update fields if provided
     update_data = data.model_dump(exclude_unset=True)
+    slug_inputs_changed = any(k in update_data for k in ("doctor_name", "specialization", "city"))
     for field, value in update_data.items():
         setattr(clinic, field, value)
-    
+
+    # If any slug-source field changed, regenerate the public slug so the
+    # public profile URL reflects the new doctor-name-specialization-city.
+    if slug_inputs_changed:
+        clinic.slug = generate_unique_slug(
+            doctor_name=clinic.doctor_name,
+            city=clinic.city,
+            specialization=clinic.specialization,
+            db=db,
+            exclude_clinic_id=clinic.id,
+        )
+
     clinic.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(clinic)
