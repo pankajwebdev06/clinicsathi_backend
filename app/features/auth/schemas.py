@@ -33,6 +33,10 @@ class ClinicUpdate(BaseModel):
     about_doctor: Optional[str] = None
     services: Optional[str] = None
     consultation_fee: Optional[str] = None
+    # Prescription template selection (preset id 't1'..'t5' or 'custom')
+    selected_template: Optional[str] = None
+    # JSON-serialised TemplateConfig (only used when selected_template == 'custom')
+    template_config: Optional[str] = None
 
 
 class ClinicResponse(BaseModel):
@@ -55,6 +59,8 @@ class ClinicResponse(BaseModel):
     about_doctor: Optional[str] = None
     services: Optional[str] = None
     consultation_fee: Optional[str] = None
+    selected_template: Optional[str] = 't1'
+    template_config: Optional[str] = None
     is_active: bool
     created_at: datetime
     updated_at: Optional[datetime] = None
@@ -90,11 +96,16 @@ class UserResponse(BaseModel):
     email: Optional[str] = None
     name: str
     role: str
+    preferred_language: Optional[str] = 'en'
     is_active: bool
     created_at: datetime
 
     class Config:
         from_attributes = True
+
+
+class UserPreferencesUpdate(BaseModel):
+    preferred_language: Optional[str] = Field(None, min_length=2, max_length=5)
 
 
 class TokenResponse(BaseModel):

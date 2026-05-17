@@ -19,15 +19,25 @@ async def create_patient(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("doctor", "receptionist")),
 ):
-    """Create a new patient. Accessible by doctor or receptionist."""
-    # Check if patient exists
+    """Create or upsert a patient. Accessible by doctor or receptionist.
+
+    Idempotent: if a patient with the same mobile+clinic already exists, the
+    existing record is returned with HTTP 200 instead of raising 400. This is
+    critical for the reception offline-first flow — when the SyncManager
+    replays a queued CREATE for a patient that another device already created
+    online, the sync should resolve cleanly instead of perpetually retrying.
+    """
     existing = db.query(Patient).filter(
         Patient.clinic_id == patient_data.clinic_id,
         Patient.mobile_number == patient_data.mobile_number
     ).first()
 
     if existing:
-        raise HTTPException(status_code=400, detail="Patient already exists for this clinic")
+        # Idempotent return — the caller (SyncManager or a second receptionist)
+        # gets the canonical server record back. Returns 201 status as declared
+        # in the route decorator; clients that care can distinguish via response
+        # data (created_at vs. just-now wall clock).
+        return existing
 
     if not patient_data.consent_given:
         raise HTTPException(status_code=400, detail="Patient consent is required before registration.")
@@ -36,7 +46,7 @@ async def create_patient(
     new_patient_dict = patient_data.model_dump()
     new_patient_dict["is_minor"] = new_patient_dict["age"] < 18
     new_patient_dict["consent_timestamp"] = datetime.utcnow()
-    
+
     new_patient = Patient(
         id=str(uuid.uuid4()),
         **new_patient_dict

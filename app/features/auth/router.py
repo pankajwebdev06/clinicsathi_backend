@@ -32,6 +32,7 @@ from app.features.auth.schemas import (
     ClinicCreate, ClinicUpdate, ClinicResponse,
     UserRegister, UserResponse, TokenResponse,
     SendOTPRequest, VerifyOTPRequest, OTPResponse,
+    UserPreferencesUpdate,
 )
 from app.utils.slug import generate_unique_slug
 
@@ -399,6 +400,27 @@ async def get_current_user_info(
     current_user: User = Depends(get_current_user),
 ):
     """Get the current logged-in user's info. Requires Bearer token."""
+    return current_user
+
+
+@router.patch("/me/preferences", response_model=UserResponse)
+async def update_my_preferences(
+    data: UserPreferencesUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Update the current user's personal preferences (currently: preferred_language).
+
+    Used by the frontend i18n LanguageToggle so the user's language choice
+    persists across devices and the backend can render SMS/email templates in
+    the right language.
+    """
+    update_data = data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(current_user, field, value)
+    current_user.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(current_user)
     return current_user
 
 

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, DateTime, Enum, Boolean
+from sqlalchemy import Column, String, DateTime, Enum, Boolean, Text
 from app.core.database import Base
 import enum
 from datetime import datetime
@@ -22,6 +22,8 @@ class User(Base):
     # OTP fields - no password needed
     otp_code = Column(String(6), nullable=True)  # 6-digit OTP
     otp_expires_at = Column(DateTime, nullable=True)  # OTP expiry time
+    # User's preferred UI language ('en', 'hi', etc.) — used for SMS / email templates
+    preferred_language = Column(String(5), default='en')
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -52,6 +54,11 @@ class Clinic(Base):
     about_doctor = Column(String(2000))  # About the doctor
     services = Column(String(1000))  # Services offered (comma-separated)
     consultation_fee = Column(String(20))  # Consultation fee
+    # Prescription template — selected preset id ('t1'..'t5' or 'custom')
+    selected_template = Column(String(20), default='t1')
+    # Custom prescription template config — JSON-serialised TemplateConfig from frontend
+    # Stored as TEXT (not native JSON column) so existing Postgres + SQLite both work.
+    template_config = Column(Text, nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

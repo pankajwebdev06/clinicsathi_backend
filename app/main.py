@@ -61,7 +61,7 @@ def _setup_database():
                     conn.execute(text("ALTER TABLE admin_team_members ADD COLUMN IF NOT EXISTS user_id VARCHAR(100);"))
                     conn.execute(text("ALTER TABLE admin_team_members ADD COLUMN IF NOT EXISTS password_hash VARCHAR(200);"))
                     conn.execute(text("ALTER TABLE admin_team_members ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT FALSE;"))
-                    
+
                     # Add unique constraint if it doesn't exist
                     conn.execute(text("""
                         DO $$
@@ -71,6 +71,14 @@ def _setup_database():
                             END IF;
                         END $$;
                     """))
+
+                    # ── Clinic table: prescription template persistence ──
+                    conn.execute(text("ALTER TABLE clinics ADD COLUMN IF NOT EXISTS selected_template VARCHAR(20) DEFAULT 't1';"))
+                    conn.execute(text("ALTER TABLE clinics ADD COLUMN IF NOT EXISTS template_config TEXT;"))
+
+                    # ── User table: preferred language for SMS/email templates ──
+                    conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_language VARCHAR(5) DEFAULT 'en';"))
+
                     conn.commit()
                 except Exception as e:
                     print(f"Migration note (expected if exists): {e}")
