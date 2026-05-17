@@ -96,8 +96,30 @@ async def get_public_profile(
     slug: str,
     db: Session = Depends(get_db)
 ):
-    """Get public clinic profile by slug (no auth required)."""
+    """Get public clinic profile by slug (no auth required).
+
+    Also handles old-format slugs (dr-name-city) that predated the
+    specialization-in-slug change (dr-name-spec-city), so Google-indexed
+    URLs continue to work instead of returning 404.
+    """
+    # Exact match first (fast path)
     clinic = db.query(Clinic).filter(Clinic.slug == slug, Clinic.is_active != False).first()
+
+    if not clinic:
+        # Fuzzy fallback for old URLs: old slug = "dr-name-city",
+        # new slug = "dr-name-specialization-city"
+        # Match by shared prefix (first 2 parts) + shared city suffix (last part)
+        parts = slug.split('-')
+        if len(parts) >= 2:
+            prefix = '-'.join(parts[:2])  # e.g. "dr-test"
+            suffix = parts[-1]            # e.g. "bokaro"
+            clinic = db.query(Clinic).filter(
+                Clinic.slug.like(f"{prefix}%"),
+                Clinic.slug.like(f"%-{suffix}"),
+                Clinic.slug != slug,
+                Clinic.is_active != False,
+            ).first()
+
     if not clinic:
         raise HTTPException(status_code=404, detail="Clinic profile not found")
     return clinic
@@ -139,15 +161,31 @@ async def update_clinic(
     if current_user.role != UserRole.ADMIN and current_user.clinic_id != clinic_id:
         raise HTTPException(status_code=403, detail="Not authorized to update this clinic")
     
-    # Update fields if provided
+    # Snapshot slug-source values before applying changes
+    old_doctor_name = clinic.doctor_name
+    old_specialization = clinic.specialization
+    old_city = clinic.city
+
     update_data = data.model_dump(exclude_unset=True)
-    slug_inputs_changed = any(k in update_data for k in ("doctor_name", "specialization", "city"))
     for field, value in update_data.items():
         setattr(clinic, field, value)
 
-    # If any slug-source field changed, regenerate the public slug so the
-    # public profile URL reflects the new doctor-name-specialization-city.
-    if slug_inputs_changed:
+    # Regenerate slug when:
+    # 1. Any slug-source field (name/spec/city) actually changed value, OR
+    # 2. Specialization is now set but the current slug doesn't contain it
+    #    (handles old clinics created before specialization was added to slugs)
+    slug_source_changed = (
+        clinic.doctor_name != old_doctor_name
+        or clinic.specialization != old_specialization
+        or clinic.city != old_city
+    )
+    spec_missing_from_slug = (
+        clinic.specialization
+        and clinic.slug
+        and generate_unique_slug(clinic.doctor_name, clinic.city, clinic.specialization) not in clinic.slug
+    )
+
+    if slug_source_changed or spec_missing_from_slug:
         clinic.slug = generate_unique_slug(
             doctor_name=clinic.doctor_name,
             city=clinic.city,
