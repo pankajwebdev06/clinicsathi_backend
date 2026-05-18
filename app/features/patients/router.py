@@ -33,10 +33,19 @@ async def create_patient(
     ).first()
 
     if existing:
-        # Idempotent return — the caller (SyncManager or a second receptionist)
-        # gets the canonical server record back. Returns 201 status as declared
-        # in the route decorator; clients that care can distinguish via response
-        # data (created_at vs. just-now wall clock).
+        # Upsert — caller may be replaying an offline sync that captured updated
+        # patient details (corrected name, age, etc.). Apply the incoming data so
+        # the server record stays in sync with what the receptionist last entered.
+        existing.name = patient_data.name
+        existing.age = patient_data.age
+        existing.gender = patient_data.gender
+        existing.is_minor = patient_data.age < 18
+        if patient_data.consent_given and not existing.consent_given:
+            existing.consent_given = True
+            existing.consent_timestamp = datetime.utcnow()
+        existing.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(existing)
         return existing
 
     if not patient_data.consent_given:
