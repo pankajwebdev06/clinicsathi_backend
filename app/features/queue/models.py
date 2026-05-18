@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, DateTime, Enum, Integer, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, String, DateTime, Enum, Integer, ForeignKey
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 import enum
@@ -32,7 +32,3 @@ class QueueEntry(Base):
 
     # Relationship
     patient = relationship("Patient", back_populates="queue_entries")
-
-    __table_args__ = (
-        UniqueConstraint('clinic_id', 'token_number', name='uq_clinic_token'),
-    )

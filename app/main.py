@@ -1,9 +1,13 @@
 import asyncio
+import logging
 from fastapi import FastAPI, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.exc import IntegrityError as SAIntegrityError
 from app.core.config import settings
 from app.core.database import engine, Base
+
+logger = logging.getLogger(__name__)
 
 # Import all models so SQLAlchemy knows about them for table creation
 from app.features.auth.models import User, Clinic  # noqa: F401
@@ -79,6 +83,20 @@ def _setup_database():
                     # ── User table: preferred language for SMS/email templates ──
                     conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_language VARCHAR(5) DEFAULT 'en';"))
 
+                    # ── Queue: drop the global unique constraint on (clinic_id, token_number).
+                    # Tokens are daily-reset — C-001 on Monday and C-001 on Tuesday are both
+                    # valid. The old constraint treated them as duplicates, causing a
+                    # UniqueViolation on every clinic's second day. Token uniqueness is now
+                    # enforced in _generate_token (MAX scan) + retry loop in add_to_queue.
+                    conn.execute(text("""
+                        DO $$
+                        BEGIN
+                            IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'uq_clinic_token') THEN
+                                ALTER TABLE queue_entries DROP CONSTRAINT uq_clinic_token;
+                            END IF;
+                        END $$;
+                    """))
+
                     conn.commit()
                 except Exception as e:
                     print(f"Migration note (expected if exists): {e}")
@@ -93,6 +111,30 @@ def _setup_database():
         if settings.DATABASE_URL and '@' in settings.DATABASE_URL:
             print(f"   Host: {settings.DATABASE_URL.split('@')[-1]}")
         return False
+
+# ── Global exception handlers ───────────────────────────────────────────────
+# These run INSIDE FastAPI's middleware stack so the CORS middleware correctly
+# adds Access-Control-Allow-Origin to every error response.  Without these,
+# unhandled exceptions bubble up to Starlette's ServerErrorMiddleware which
+# generates the 500 response OUTSIDE the CORS layer — the browser sees a CORS
+# block instead of the real error.
+
+@app.exception_handler(SAIntegrityError)
+async def sqlalchemy_integrity_error_handler(request: Request, exc: SAIntegrityError):
+    logger.error("DB IntegrityError: %s", exc.orig)
+    return JSONResponse(
+        status_code=409,
+        content={"detail": "A conflicting record already exists. Please try again."},
+    )
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    logger.error("Unhandled exception on %s %s: %s", request.method, request.url, exc, exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error. Please try again."},
+    )
+
 
 @app.on_event("startup")
 async def create_tables():

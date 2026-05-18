@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError as SAIntegrityError
 from typing import List, Optional
 import uuid
 from datetime import datetime
@@ -32,32 +33,42 @@ async def add_to_queue(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("doctor", "receptionist")),
 ):
-    """Add a patient to the queue. Token is auto-generated."""
-    token = _generate_token(db, data.clinic_id)
+    """Add a patient to the queue. Token is auto-generated with daily reset."""
+    # Retry loop handles the rare case where two concurrent requests generate
+    # the same token number (race condition on the MAX query).
+    for attempt in range(5):
+        token = _generate_token(db, data.clinic_id, extra_offset=attempt)
 
-    entry = QueueEntry(
-        id=str(uuid.uuid4()),
-        clinic_id=data.clinic_id,
-        patient_id=data.patient_id,
-        token_number=token,
-        status=QueueStatus.WAITING,
-        priority=data.priority,
-        symptoms=data.symptoms,
-        bp=data.bp,
-        weight=data.weight,
-        temperature=data.temperature,
-        pulse=data.pulse,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
-    )
-    db.add(entry)
-    db.commit()
-    db.refresh(entry)
+        entry = QueueEntry(
+            id=str(uuid.uuid4()),
+            clinic_id=data.clinic_id,
+            patient_id=data.patient_id,
+            token_number=token,
+            status=QueueStatus.WAITING,
+            priority=data.priority,
+            symptoms=data.symptoms,
+            bp=data.bp,
+            weight=data.weight,
+            temperature=data.temperature,
+            pulse=data.pulse,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+        )
+        db.add(entry)
+        try:
+            db.commit()
+            db.refresh(entry)
+            break
+        except SAIntegrityError:
+            db.rollback()
+            if attempt == 4:
+                raise HTTPException(status_code=409, detail="Token generation conflict — please try again.")
+            continue
 
     # Broadcast update to all clinic devices via WebSocket
     await manager.broadcast_to_clinic(data.clinic_id, {
         "event": "QUEUE_UPDATED",
-        "message": f"New patient added: {token}",
+        "message": f"New patient added: {entry.token_number}",
         "entry_id": entry.id
     })
 
@@ -139,31 +150,36 @@ async def remove_from_queue(
 
 
 # ── HELPER ──────────────────────────────────────────────
-def _generate_token(db: Session, clinic_id: str) -> str:
-    """Auto-generate the next token number for a clinic (e.g. A-001, B-002...)."""
+def _generate_token(db: Session, clinic_id: str, extra_offset: int = 0) -> str:
+    """Generate the next daily-reset token for a clinic (e.g. C-001, C-002…).
+
+    Scans every token issued today and uses MAX+1 so concurrent inserts on the
+    same clinic cannot produce a duplicate number.  The caller passes extra_offset
+    when retrying after a collision (rare race condition with two simultaneous
+    POST /queue requests).
+    """
     today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
 
     from app.features.auth.models import Clinic
     clinic = db.query(Clinic).filter(Clinic.id == clinic_id).first()
-    prefix = "T"
-    if clinic and clinic.name:
-        # Extract first letter of the clinic name
-        prefix = clinic.name[0].upper()
+    prefix = clinic.name[0].upper() if clinic and clinic.name else "T"
 
-    last_entry = db.query(QueueEntry).filter(
+    # Pull every token_number issued today and find the true maximum.
+    # Using MAX on the full set (not just the latest row by created_at) avoids
+    # the race condition where two requests read the same last row simultaneously.
+    today_tokens = db.query(QueueEntry.token_number).filter(
         QueueEntry.clinic_id == clinic_id,
-        QueueEntry.created_at >= today_start
-    ).order_by(QueueEntry.created_at.desc()).first()
+        QueueEntry.created_at >= today_start,
+    ).all()
 
-    if not last_entry:
-        return f"{prefix}-001"
-    
-    try:
-        last_num = int(last_entry.token_number.split("-")[1])
-        return f"{prefix}-{last_num + 1:03d}"
-    except (ValueError, IndexError):
-        count = db.query(QueueEntry).filter(
-            QueueEntry.clinic_id == clinic_id,
-            QueueEntry.created_at >= today_start
-        ).count()
-        return f"{prefix}-{count + 1:03d}"
+    max_num = 0
+    for (token_str,) in today_tokens:
+        try:
+            parts = token_str.split("-")
+            if len(parts) >= 2:
+                max_num = max(max_num, int(parts[-1]))
+        except (ValueError, IndexError):
+            pass
+
+    next_num = max_num + 1 + extra_offset
+    return f"{prefix}-{next_num:03d}"
